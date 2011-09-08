@@ -159,6 +159,7 @@
                   "~"))
     (kill-buffer diff-buf)))
 
+;;;###autoload
 (defun backup-walker-start (original-file)
   "start walking with the latest backup
 with universal arg, ask for a file-name."
