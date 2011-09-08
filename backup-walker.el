@@ -172,6 +172,9 @@ with universal arg, ask for a file-name."
                           (file-name-nondirectory buffer-file-name))
                        (or buffer-file-name
                            (error "buffer has no file name")))))
+  (unless (and version-control
+               (not (eq version-control 'never)))
+    (error "version-control must be enabled for backup-walker to function."))
   (let ((backups (backup-walker-get-sorted-backups original-file))
         alist
         buf)
