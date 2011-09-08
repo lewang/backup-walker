@@ -1,0 +1,7 @@
+* Purpose
+
+Traverse versioned backups, showing incremental diffs.
+
+* Requires
+
+Emacs 23+
