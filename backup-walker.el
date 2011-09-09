@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Fri Sep  9 14:35:40 2011 (+0800)
+;; Last-Updated: Fri Sep  9 15:46:42 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 66
+;;     Update #: 71
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -232,7 +232,7 @@ with ARG, move ARG times"
                 (index (cdr index-cons))
                 (new-index (- index arg)))
            (if (< new-index 0)
-               (error (format "not enough newer backups, max is %i" index))
+               (signal 'args-out-of-range (list (format "not enough newer backups, max is %i" index)))
              (setcdr index-cons new-index)
              (backup-walker-refresh))))))
 
@@ -248,7 +248,7 @@ with ARG move ARG times"
                 (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
                 (max-movement (- (1- (length suffixes)) index)))
            (if (> arg max-movement)
-               (error (format "not enough older backups, max is %i" max-movement))
+               (signal 'args-out-of-range (list (format "not enough older backups, max is %i" max-movement)))
              (setcdr index-cons (+ index arg))
              (backup-walker-refresh))))))
 
@@ -265,11 +265,37 @@ Only call this function interactively."
     (display-buffer-other-window buf)
     (setq other-window-scroll-buffer buf)))
 
-(defun backup-walker-quit ()
+(defun backup-walker-find-birth (line)
+  "find out where a certain line came into existance"
+  (interactive (list (read-string "line: " nil 'backup-walker-birth)))
+  (let* ((index-cons (assq :index backup-walker-data-alist))
+         (old-index (cdr index-cons))
+         (is-unified (member "-u" diff-switches))
+         (search-str (format "-%s" line))
+         found)
+    (condition-case err
+        (while (not found)
+          (let ((suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
+                (index (cdr (assq :index backup-walker-data-alist))))
+            (goto-char (point-min))
+            (when (not is-unified)
+              (diff-context->unified (point-min) (point-max)))
+            (message "searching %s" (nth index suffixes))
+            (if (search-forward search-str nil t)
+                (setq found t)
+              (backup-walker-previous 1))))
+      ('args-out-of-range
+       (setcdr index-cons old-index)
+       (backup-walker-refresh)
+       (message "input was not found in backup history")))))
+
+(defun backup-walker-quit (arg)
   "quit backup-walker session.
 
-Offer to kill all associated backup buffers."
-  (interactive)
+Offer to kill all associated backup buffers.
+
+with ARG, also kill the walking buffer"
+  (interactive "P")
   (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
          (prefix-len (length prefix))
          (walking-buf (current-buffer))
@@ -281,14 +307,16 @@ Offer to kill all associated backup buffers."
                          (string= prefix (substring file-name 0 prefix-len)))
                 (push buf backup-bufs))))
           (buffer-list))
-    (when (y-or-n-p (concat (propertize (int-to-string (length backup-bufs))
+    (when (and (not (eq 0 (length backup-bufs)))
+               (y-or-n-p (concat (propertize (int-to-string (length backup-bufs))
                                       'face 'highlight)
-                          " backup buffers found, kill them?"))
+                          " backup buffers found, kill them?")))
       (mapc (lambda (buf)
               (kill-buffer buf))
             backup-bufs))
     (quit-window)
-    (kill-buffer walking-buf)))
+    (when (and arg (listp arg))
+      (kill-buffer walking-buf))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; backup-walker.el ends here
