@@ -167,6 +167,13 @@
           (concat (format "{{ ~%s~ → ~%s~ }} "
                           (propertize left-version 'face 'font-lock-variable-name-face)
                           (propertize right-version 'face 'font-lock-variable-name-face))
+                  (if (eq index 0)
+                      ""
+                    (concat (propertize "<n>" 'face 'italic)
+                            " ~"
+                            (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
+                                        'face 'font-lock-keyword-face)
+                            "~ "))
                   (if (nth (1+ index) suffixes)
                       (concat (propertize "<p>" 'face 'italic)
                               " ~"
@@ -175,13 +182,6 @@
                                           'face 'font-lock-keyword-face)
                               "~ ")
                     "")
-                  (if (eq index 0)
-                      ""
-                    (concat (propertize "<n>" 'face 'italic)
-                            " ~"
-                            (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
-                                        'face 'font-lock-keyword-face)
-                            "~ "))
                   (propertize "<return>" 'face 'italic)
                   " open ~"
                   (propertize (propertize (int-to-string (backup-walker-get-version right-file))
