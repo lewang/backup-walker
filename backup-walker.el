@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Fri Sep  9 15:46:42 2011 (+0800)
+;; Last-Updated: Sat Sep 10 02:53:55 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 71
+;;     Update #: 91
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -104,12 +104,39 @@
   `backup-walker-start' as entry point."
   (run-hooks 'view-mode-hook)           ; diff-mode sets up this hook to
                                         ; remove its read-only overrides.
-  (add-to-list 'minor-mode-overriding-map-alist `(buffer-read-only . ,backup-walker-ro-map))
-  (backup-walker-refresh))
+  (add-to-list 'minor-mode-overriding-map-alist `(buffer-read-only . ,backup-walker-ro-map)))
+
+
+(defvar backup-walker-minor-mode nil "non-nil if backup walker minor mode is enabled")
+(make-variable-buffer-local 'backup-walker-minor-mode)
+
+(defun backup-walker-minor-mode (&optional arg)
+  "purposefully made non-interactive, because this mode should only be used by code"
+  (setq arg (cond  ((or (null arg)
+                        (eq arg 'toggle))
+                    (if backup-walker-minor-mode
+                        nil
+                      t))
+                   ((> arg 0)
+                    t)
+                   ((<= arg 0)
+                    nil)))
+  (setq backup-walker-minor-mode arg)
+  (force-mode-line-update)
+  (if backup-walker-minor-mode
+      (let ((index (cdr (assq :index backup-walker-data-alist)))
+            (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist))))
+        (setq header-line-format (backup-walker-get-key-help-common index suffixes))
+        (add-to-list 'minor-mode-overriding-map-alist `(buffer-read-only . ,backup-walker-ro-map)))
+    (setq header-line-format nil)
+    (delq `(buffer-read-only . ,backup-walker-ro-map) minor-mode-overriding-map-alist))
+  backup-walker-minor-mode)
+
+(add-minor-mode 'backup-walker-minor-mode " walker" nil nil nil)
 
 (defvar backup-walker-data-alist nil
   "")
-(make-variable-buffer-local 'backup-walker-data)
+(make-variable-buffer-local 'backup-walker-data-alist)
 
 (defsubst backup-walker-get-version (fn &optional start)
   "return version number given backup"
@@ -144,13 +171,33 @@
                             (not (< (car f1) (car f2)))))))))
 
 
+(defsubst backup-walker-get-key-help-common (index suffixes)
+  (concat
+   (if (eq index 0)
+       ""
+     (concat (propertize "<n>" 'face 'italic)
+             " ~"
+             (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
+                         'face 'font-lock-keyword-face)
+             "~ "))
+   (if (nth (1+ index) suffixes)
+       (concat (propertize "<p>" 'face 'italic)
+               " ~"
+               (propertize (int-to-string
+                            (backup-walker-get-version (nth (1+ index) suffixes)))
+                           'face 'font-lock-keyword-face)
+               "~ ")
+     "")
+   (propertize "<q>" 'face 'italic)
+   " quit "))
+
 (defun backup-walker-refresh ()
   (let* ((index (cdr (assq :index backup-walker-data-alist)))
          (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
          (prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
          (right-file (concat prefix (nth index suffixes)))
          (right-version (format "%i" (backup-walker-get-version right-file)))
-         diff-buff left-file left-version)
+         diff-buf left-file left-version)
     (if (eq index 0)
         (setq left-file (cdr (assq :original-file backup-walker-data-alist))
               left-version "orig")
@@ -167,21 +214,7 @@
           (concat (format "{{ ~%s~ → ~%s~ }} "
                           (propertize left-version 'face 'font-lock-variable-name-face)
                           (propertize right-version 'face 'font-lock-variable-name-face))
-                  (if (eq index 0)
-                      ""
-                    (concat (propertize "<n>" 'face 'italic)
-                            " ~"
-                            (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
-                                        'face 'font-lock-keyword-face)
-                            "~ "))
-                  (if (nth (1+ index) suffixes)
-                      (concat (propertize "<p>" 'face 'italic)
-                              " ~"
-                              (propertize (int-to-string
-                                           (backup-walker-get-version (nth (1+ index) suffixes)))
-                                          'face 'font-lock-keyword-face)
-                              "~ ")
-                    "")
+                  (backup-walker-get-key-help-common index suffixes)
                   (propertize "<return>" 'face 'italic)
                   " open ~"
                   (propertize (propertize (int-to-string (backup-walker-get-version right-file))
@@ -215,11 +248,13 @@ with universal arg, ask for a file-name."
       (push `(:backup-suffix-list . ,(cdr backups)) alist)
       (push `(:original-file . ,original-file) alist)
       (push `(:index . 0) alist)
-      (setq buf (pop-to-buffer (get-buffer-create (format "*Walking: %s*" (buffer-name)))))
+      (setq buf (get-buffer-create (format "*Walking: %s*" (buffer-name))))
       (with-current-buffer buf
-        (setq backup-walker-data-alist alist)
+        (backup-walker-mode)
         (buffer-disable-undo)
-        (backup-walker-mode)))))
+        (setq backup-walker-data-alist alist)
+        (backup-walker-refresh))
+      (pop-to-buffer buf))))
 
 (defun backup-walker-next (arg)
   "move to a more recent backup
@@ -230,11 +265,11 @@ with ARG, move ARG times"
         ((> arg 0)
          (let* ((index-cons (assq :index backup-walker-data-alist))
                 (index (cdr index-cons))
+                (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
                 (new-index (- index arg)))
            (if (< new-index 0)
                (signal 'args-out-of-range (list (format "not enough newer backups, max is %i" index)))
-             (setcdr index-cons new-index)
-             (backup-walker-refresh))))))
+             (backup-walker-move index-cons index suffixes new-index))))))
 
 (defun backup-walker-previous (arg)
   "move to a less recent backup
@@ -246,48 +281,94 @@ with ARG move ARG times"
          (let* ((index-cons (assq :index backup-walker-data-alist))
                 (index (cdr index-cons))
                 (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
-                (max-movement (- (1- (length suffixes)) index)))
+                (max-movement (- (1- (length suffixes)) index))
+                (new-index (+ index arg)))
            (if (> arg max-movement)
                (signal 'args-out-of-range (list (format "not enough older backups, max is %i" max-movement)))
-             (setcdr index-cons (+ index arg))
-             (backup-walker-refresh))))))
+             (backup-walker-move index-cons index suffixes new-index))))))
+
+;; TODO: We can actually compute the correct new point by diffing and
+;;       interpreting results.  So far, it seems overkill.
+
+(defsubst backup-walker-move (index-cons index suffixes new-index)
+"internal function used by backup-walker-{next,previous}"
+(cond
+ ((eq major-mode 'backup-walker-mode)
+  (setcdr index-cons new-index)
+  (backup-walker-refresh))
+ (backup-walker-minor-mode
+  (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
+         (file-name (concat prefix (nth new-index suffixes)))
+         (alist (purecopy backup-walker-data-alist))
+         (saved-column (current-column))
+         (saved-line (count-lines (point-min) (point)))
+         (buf (find-file-noselect file-name)))
+    (setcdr (assq :index alist) new-index)
+    (with-current-buffer buf
+      (setq backup-walker-data-alist alist)
+      (backup-walker-minor-mode 1)
+      (goto-char (point-at-bol saved-line))
+      (move-to-column saved-column))
+    (set-window-buffer nil buf)))))
 
 (defun backup-walker-show-file-in-other-window ()
   "open the current backup in another window.
 
 Only call this function interactively."
   (interactive)
+  (unless (eq major-mode 'backup-walker-mode)
+    (error "this is not a backup walker buffer."))
   (let* ((index (cdr (assq :index backup-walker-data-alist)))
          (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
          (prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
          (file-name (concat prefix (nth index suffixes)))
+         (walking-buf (current-buffer))
+         (alist (purecopy backup-walker-data-alist))
          (buf (find-file-noselect file-name)))
-    (display-buffer-other-window buf)
-    (setq other-window-scroll-buffer buf)))
+    (with-current-buffer buf
+      (setq backup-walker-data-alist alist)
+      (push `(:walking-buf . ,walking-buf) backup-walker-data-alist)
+      (backup-walker-minor-mode 1))
+    (pop-to-buffer buf)))
 
-(defun backup-walker-find-birth (line)
-  "find out where a certain line came into existance"
-  (interactive (list (read-string "line: " nil 'backup-walker-birth)))
-  (let* ((index-cons (assq :index backup-walker-data-alist))
-         (old-index (cdr index-cons))
-         (is-unified (member "-u" diff-switches))
-         (search-str (format "-%s" line))
-         found)
-    (condition-case err
-        (while (not found)
-          (let ((suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
-                (index (cdr (assq :index backup-walker-data-alist))))
-            (goto-char (point-min))
-            (when (not is-unified)
-              (diff-context->unified (point-min) (point-max)))
-            (message "searching %s" (nth index suffixes))
-            (if (search-forward search-str nil t)
-                (setq found t)
-              (backup-walker-previous 1))))
-      ('args-out-of-range
-       (setcdr index-cons old-index)
-       (backup-walker-refresh)
-       (message "input was not found in backup history")))))
+(defun backup-walker-blame (line)
+  "find out where a certain line came into existance
+
+show the backup *JUST BEFORE* this line was born, since that is
+usually more interesting."
+  (interactive (list (read-string "line: " nil 'backup-walker-blame)))
+  (cond
+   (backup-walker-minor-mode
+    (let* ((my-index (cdr (assq :index backup-walker-data-alist)))
+           (walking-buf (cdr (assq :walking-buf backup-walker-data-alist))))
+      (with-current-buffer walking-buf
+        (setcdr (assq :index backup-walker-data-alist) my-index)
+        (backup-walker-refresh))
+      (pop-to-buffer walking-buf)
+      (backup-walker-blame line)))
+   ((eq major-mode 'backup-walker-mode)
+    (let* ((index-cons (assq :index backup-walker-data-alist))
+           (old-index (cdr index-cons))
+           (is-unified (member "-u" diff-switches))
+           (search-str (format "-%s" line))
+           found)
+      (condition-case err
+          (while (not found)
+            (let ((suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
+                  (index (cdr (assq :index backup-walker-data-alist))))
+              (goto-char (point-min))
+              (when (not is-unified)
+                (diff-context->unified (point-min) (point-max)))
+              (message "searching %s" (nth index suffixes))
+              (if (search-forward search-str nil t)
+                  (setq found t)
+                (backup-walker-previous 1))))
+        ('args-out-of-range
+         (setcdr index-cons old-index)
+         (backup-walker-refresh)
+         (message "input was not found in backup history")))))
+   (t
+    (error "not sure what you want me to do."))))
 
 (defun backup-walker-quit (arg)
   "quit backup-walker session.
@@ -296,27 +377,34 @@ Offer to kill all associated backup buffers.
 
 with ARG, also kill the walking buffer"
   (interactive "P")
-  (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
-         (prefix-len (length prefix))
-         (walking-buf (current-buffer))
-         backup-bufs)
-    (mapc (lambda (buf)
-            (let ((file-name (buffer-file-name buf)))
-              (when (and file-name
-                         (>= (length file-name) prefix-len)
-                         (string= prefix (substring file-name 0 prefix-len)))
-                (push buf backup-bufs))))
-          (buffer-list))
-    (when (and (not (eq 0 (length backup-bufs)))
-               (y-or-n-p (concat (propertize (int-to-string (length backup-bufs))
-                                      'face 'highlight)
-                          " backup buffers found, kill them?")))
-      (mapc (lambda (buf)
-              (kill-buffer buf))
-            backup-bufs))
-    (quit-window)
-    (when (and arg (listp arg))
-      (kill-buffer walking-buf))))
+  (cond (backup-walker-minor-mode
+         (pop-to-buffer (cdr (assq :walking-buf backup-walker-data-alist))))
+        ((eq major-mode 'backup-walker-mode)
+         (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
+                (prefix-len (length prefix))
+                (walking-buf (current-buffer))
+                backup-bufs)
+           (mapc (lambda (buf)
+                   (let ((file-name (buffer-file-name buf)))
+                     (when (and file-name
+                                (>= (length file-name) prefix-len)
+                                (string= prefix (substring file-name 0 prefix-len)))
+                       (push buf backup-bufs))))
+                 (buffer-list))
+           (when (and (not (eq 0 (length backup-bufs)))
+                      (y-or-n-p (concat (propertize (int-to-string (length backup-bufs))
+                                                    'face 'highlight)
+                                        " backup buffers found, kill them?")))
+             (mapc (lambda (buf)
+                     (kill-buffer buf))
+                   backup-bufs))
+           (quit-window)
+           (when (and arg
+                      (listp arg))
+             (kill-buffer walking-buf))))
+        (t
+         (error "I don't know how to quit you."))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; backup-walker.el ends here
