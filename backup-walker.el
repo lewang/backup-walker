@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Fri Sep  9 04:02:39 2011 (+0800)
+;; Last-Updated: Fri Sep  9 14:15:47 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 63
+;;     Update #: 65
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -221,26 +221,36 @@ with universal arg, ask for a file-name."
         (buffer-disable-undo)
         (backup-walker-mode)))))
 
-(defun backup-walker-next ()
-  "move to a more recent backup"
-  (interactive)
-  (let ((index-cons (assq :index backup-walker-data-alist)))
-    (if (eq 0 (cdr index-cons))
-        (error "currently on newest backup.")
-      (setcdr index-cons (1- (cdr index-cons)))
-      (backup-walker-refresh))))
+(defun backup-walker-next (arg)
+  "move to a more recent backup
+with ARG, move ARG times"
+  (interactive "p")
+  (cond ((< arg 0)
+         (backup-walker-previous (- arg)))
+        ((> arg 0)
+         (let* ((index-cons (assq :index backup-walker-data-alist))
+                (index (cdr index-cons))
+                (new-index (- index arg)))
+           (if (< new-index 0)
+               (error (format "not enough newer backups, max is %i" index))
+             (setcdr index-cons new-index)
+             (backup-walker-refresh))))))
 
-
-(defun backup-walker-previous ()
-  "move to a less recent backup"
-  (interactive)
-  (let* ((index-cons (assq :index backup-walker-data-alist))
-         (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
-         (next (nth (1+ (cdr index-cons)) suffixes)))
-    (if (null next)
-        (error "currently on oldest backup.")
-      (setcdr index-cons (1+ (cdr index-cons)))
-      (backup-walker-refresh))))
+(defun backup-walker-previous (arg)
+  "move to a less recent backup
+with ARG move ARG times"
+  (interactive "p")
+  (cond ((< arg 0)
+         (backup-walker-next (- arg)))
+        ((> arg 0)
+         (let* ((index-cons (assq :index backup-walker-data-alist))
+                (index (cdr index-cons))
+                (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
+                (max-movement (- (1- (length suffixes)) index)))
+           (if (> arg max-movement)
+               (error (format "not enough older backups, max is %i" max-movement))
+             (setcdr index-cons (+ index arg))
+             (backup-walker-refresh))))))
 
 (defun backup-walker-show-file-in-other-window ()
   "open the current backup in another window.
