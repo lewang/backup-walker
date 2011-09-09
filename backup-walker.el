@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Sat Sep 10 02:53:55 2011 (+0800)
+;; Last-Updated: Sat Sep 10 03:00:16 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 91
+;;     Update #: 92
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -247,7 +247,7 @@ with universal arg, ask for a file-name."
       (push `(:backup-prefix . ,(car backups)) alist)
       (push `(:backup-suffix-list . ,(cdr backups)) alist)
       (push `(:original-file . ,original-file) alist)
-      (push `(:index . 0) alist)
+      (push `(:index . ,(+ 0)) alist)
       (setq buf (get-buffer-create (format "*Walking: %s*" (buffer-name))))
       (with-current-buffer buf
         (backup-walker-mode)
