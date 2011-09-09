@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Fri Sep  9 14:15:47 2011 (+0800)
+;; Last-Updated: Fri Sep  9 14:35:40 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 65
+;;     Update #: 66
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -209,7 +209,7 @@ with universal arg, ask for a file-name."
   (let ((backups (backup-walker-get-sorted-backups original-file))
         alist
         buf)
-    (if (null backups)
+    (if (null (cdr backups))
         (error "no backups found.")
       (push `(:backup-prefix . ,(car backups)) alist)
       (push `(:backup-suffix-list . ,(cdr backups)) alist)
