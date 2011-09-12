@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Sat Sep 10 03:00:16 2011 (+0800)
+;; Last-Updated: Mon Sep 12 16:43:38 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 92
+;;     Update #: 95
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -58,7 +58,9 @@
 ;; `backup-walker' buffer.
 ;;
 
-
+;;; todo
+;;;
+;;; - purecopy seems excessive.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -81,11 +83,12 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(eval-when-compile
+  (require 'cl))
 
 (provide 'backup-walker)
 
-(require 'diff)
+(eval-and-compile (require 'diff))
 
 (or (fboundp 'diff-no-select)
     (defun diff-no-select (old new &optional switches no-async)
@@ -147,6 +150,50 @@
                   (match-end 0)))
     (backup-walker-get-version fn (length (file-name-sans-versions fn)))))
 
+(defsubst backup-walker-get-key-help-common (index suffixes)
+  (concat
+   (if (eq index 0)
+       ""
+     (concat (propertize "<n>" 'face 'italic)
+             " ~"
+             (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
+                         'face 'font-lock-keyword-face)
+             "~ "))
+   (if (nth (1+ index) suffixes)
+       (concat (propertize "<p>" 'face 'italic)
+               " ~"
+               (propertize (int-to-string
+                            (backup-walker-get-version (nth (1+ index) suffixes)))
+                           'face 'font-lock-keyword-face)
+               "~ ")
+     "")
+   (propertize "<q>" 'face 'italic)
+   " quit "))
+
+;; TODO: We can actually compute the correct new point by diffing and
+;;       interpreting results.  So far, it seems overkill.
+
+(defsubst backup-walker-move (index-cons index suffixes new-index)
+  "internal function used by backup-walker-{next,previous}"
+  (cond
+   ((eq major-mode 'backup-walker-mode)
+    (setcdr index-cons new-index)
+    (backup-walker-refresh))
+   (backup-walker-minor-mode
+    (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
+           (file-name (concat prefix (nth new-index suffixes)))
+           (alist (purecopy backup-walker-data-alist))
+           (saved-column (current-column))
+           (saved-line (count-lines (point-min) (point)))
+           (buf (find-file-noselect file-name)))
+      (setcdr (assq :index alist) new-index)
+      (with-current-buffer buf
+        (setq backup-walker-data-alist alist)
+        (backup-walker-minor-mode 1)
+        (goto-char (point-at-bol saved-line))
+        (move-to-column saved-column))
+      (set-window-buffer nil buf)))))
+
 (defun backup-walker-get-sorted-backups (filename)
   "Return version sorted list of backups of the form:
 
@@ -171,26 +218,6 @@
                             (not (< (car f1) (car f2)))))))))
 
 
-(defsubst backup-walker-get-key-help-common (index suffixes)
-  (concat
-   (if (eq index 0)
-       ""
-     (concat (propertize "<n>" 'face 'italic)
-             " ~"
-             (propertize (int-to-string (backup-walker-get-version (nth (1- index) suffixes)))
-                         'face 'font-lock-keyword-face)
-             "~ "))
-   (if (nth (1+ index) suffixes)
-       (concat (propertize "<p>" 'face 'italic)
-               " ~"
-               (propertize (int-to-string
-                            (backup-walker-get-version (nth (1+ index) suffixes)))
-                           'face 'font-lock-keyword-face)
-               "~ ")
-     "")
-   (propertize "<q>" 'face 'italic)
-   " quit "))
-
 (defun backup-walker-refresh ()
   (let* ((index (cdr (assq :index backup-walker-data-alist)))
          (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
@@ -206,7 +233,7 @@
     (setq diff-buf (diff-no-select left-file right-file nil 'noasync))
     (setq buffer-read-only nil)
     (delete-region (point-min) (point-max))
-    (insert-buffer diff-buf)
+    (insert-buffer-substring diff-buf)
     (set-buffer-modified-p nil)
     (setq buffer-read-only t)
     (force-mode-line-update)
@@ -256,6 +283,7 @@ with universal arg, ask for a file-name."
         (backup-walker-refresh))
       (pop-to-buffer buf))))
 
+
 (defun backup-walker-next (arg)
   "move to a more recent backup
 with ARG, move ARG times"
@@ -286,30 +314,6 @@ with ARG move ARG times"
            (if (> arg max-movement)
                (signal 'args-out-of-range (list (format "not enough older backups, max is %i" max-movement)))
              (backup-walker-move index-cons index suffixes new-index))))))
-
-;; TODO: We can actually compute the correct new point by diffing and
-;;       interpreting results.  So far, it seems overkill.
-
-(defsubst backup-walker-move (index-cons index suffixes new-index)
-"internal function used by backup-walker-{next,previous}"
-(cond
- ((eq major-mode 'backup-walker-mode)
-  (setcdr index-cons new-index)
-  (backup-walker-refresh))
- (backup-walker-minor-mode
-  (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
-         (file-name (concat prefix (nth new-index suffixes)))
-         (alist (purecopy backup-walker-data-alist))
-         (saved-column (current-column))
-         (saved-line (count-lines (point-min) (point)))
-         (buf (find-file-noselect file-name)))
-    (setcdr (assq :index alist) new-index)
-    (with-current-buffer buf
-      (setq backup-walker-data-alist alist)
-      (backup-walker-minor-mode 1)
-      (goto-char (point-at-bol saved-line))
-      (move-to-column saved-column))
-    (set-window-buffer nil buf)))))
 
 (defun backup-walker-show-file-in-other-window ()
   "open the current backup in another window.
