@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Mon Sep 12 16:43:38 2011 (+0800)
+;; Last-Updated: Mon Sep 19 02:45:45 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 95
+;;     Update #: 102
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -58,9 +58,10 @@
 ;; `backup-walker' buffer.
 ;;
 
-;;; todo
-;;;
-;;; - purecopy seems excessive.
+;;
+;; TODO: when moving between backups, if we parse the diff output, then we can
+;; locate the point to be more consistent.  It's not hard.
+;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -96,7 +97,10 @@
       (get-buffer-create "*Diff*")))
 
 
-(defvar backup-walker-ro-map (make-sparse-keymap))
+(defvar backup-walker-ro-map (let ((map (make-sparse-keymap)))
+                               (suppress-keymap map)
+                               map))
+
 (define-key backup-walker-ro-map [(n)] 'backup-walker-next)
 (define-key backup-walker-ro-map [(p)] 'backup-walker-previous)
 (define-key backup-walker-ro-map [(q)] 'backup-walker-quit)
@@ -140,6 +144,8 @@
 (defvar backup-walker-data-alist nil
   "")
 (make-variable-buffer-local 'backup-walker-data-alist)
+(put 'backup-walker-data-alist 'permanent-local t)
+
 
 (defsubst backup-walker-get-version (fn &optional start)
   "return version number given backup"
@@ -182,7 +188,7 @@
    (backup-walker-minor-mode
     (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
            (file-name (concat prefix (nth new-index suffixes)))
-           (alist (purecopy backup-walker-data-alist))
+           (alist (copy-alist backup-walker-data-alist))
            (saved-column (current-column))
            (saved-line (count-lines (point-min) (point)))
            (buf (find-file-noselect file-name)))
@@ -271,10 +277,10 @@ with universal arg, ask for a file-name."
         buf)
     (if (null (cdr backups))
         (error "no backups found.")
-      (push `(:backup-prefix . ,(car backups)) alist)
-      (push `(:backup-suffix-list . ,(cdr backups)) alist)
-      (push `(:original-file . ,original-file) alist)
-      (push `(:index . ,(+ 0)) alist)
+      (push (cons :backup-prefix(car backups)) alist)
+      (push (cons :backup-suffix-list (cdr backups)) alist)
+      (push (cons :original-file original-file) alist)
+      (push (cons :index 0) alist)
       (setq buf (get-buffer-create (format "*Walking: %s*" (buffer-name))))
       (with-current-buffer buf
         (backup-walker-mode)
@@ -327,11 +333,11 @@ Only call this function interactively."
          (prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
          (file-name (concat prefix (nth index suffixes)))
          (walking-buf (current-buffer))
-         (alist (purecopy backup-walker-data-alist))
+         (alist (copy-alist backup-walker-data-alist))
          (buf (find-file-noselect file-name)))
     (with-current-buffer buf
       (setq backup-walker-data-alist alist)
-      (push `(:walking-buf . ,walking-buf) backup-walker-data-alist)
+      (push (cons :walking-buf walking-buf) backup-walker-data-alist)
       (backup-walker-minor-mode 1))
     (pop-to-buffer buf)))
 
