@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Mon Sep 19 02:45:45 2011 (+0800)
+;; Last-Updated: Mon Sep 19 05:07:34 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 102
+;;     Update #: 105
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -106,43 +106,45 @@
 (define-key backup-walker-ro-map [(q)] 'backup-walker-quit)
 (define-key backup-walker-ro-map [(return)] 'backup-walker-show-file-in-other-window)
 
-(define-derived-mode backup-walker-mode diff-mode "{Diff backup walker}"
-  "major mode for traversing versioned backups.  Use
-  `backup-walker-start' as entry point."
-  (run-hooks 'view-mode-hook)           ; diff-mode sets up this hook to
-                                        ; remove its read-only overrides.
-  (add-to-list 'minor-mode-overriding-map-alist `(buffer-read-only . ,backup-walker-ro-map)))
-
-
 (defvar backup-walker-minor-mode nil "non-nil if backup walker minor mode is enabled")
 (make-variable-buffer-local 'backup-walker-minor-mode)
 
-(defun backup-walker-minor-mode (&optional arg)
-  "purposefully made non-interactive, because this mode should only be used by code"
-  (setq arg (cond  ((or (null arg)
-                        (eq arg 'toggle))
-                    (if backup-walker-minor-mode
-                        nil
-                      t))
-                   ((> arg 0)
-                    t)
-                   ((<= arg 0)
-                    nil)))
-  (setq backup-walker-minor-mode arg)
-  (force-mode-line-update)
-  (if backup-walker-minor-mode
-      (let ((index (cdr (assq :index backup-walker-data-alist)))
-            (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist))))
-        (setq header-line-format (backup-walker-get-key-help-common index suffixes))
-        (add-to-list 'minor-mode-overriding-map-alist `(buffer-read-only . ,backup-walker-ro-map)))
-    (setq header-line-format nil)
-    (delq `(buffer-read-only . ,backup-walker-ro-map) minor-mode-overriding-map-alist))
-  backup-walker-minor-mode)
+(lexical-let ((overriding-element (cons 'buffer-read-only backup-walker-ro-map)))
+  (define-derived-mode backup-walker-mode diff-mode "{Diff backup walker}"
+    "major mode for traversing versioned backups.  Use
+  `backup-walker-start' as entry point."
+    (run-hooks 'view-mode-hook)           ; diff-mode sets up this hook to
+                                        ; remove its read-only overrides.
+    (add-to-list 'minor-mode-overriding-map-alist overriding-element))
+
+  (defun backup-walker-minor-mode (&optional arg)
+    "purposefully made non-interactive, because this mode should only be used by code"
+    (setq arg (cond  ((or (null arg)
+                          (eq arg 'toggle))
+                      (if backup-walker-minor-mode
+                          nil
+                        t))
+                     ((> arg 0)
+                      t)
+                     ((<= arg 0)
+                      nil)))
+    (setq backup-walker-minor-mode arg)
+    (force-mode-line-update)
+    (if backup-walker-minor-mode
+        (let ((index (cdr (assq :index backup-walker-data-alist)))
+              (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist))))
+          (setq header-line-format (backup-walker-get-key-help-common index suffixes))
+          (add-to-list 'minor-mode-overriding-map-alist overriding-element))
+      (setq header-line-format nil)
+      (setq minor-mode-overriding-map-alist
+            (setq minor-mode-overriding-map-alist
+                  (delq overriding-element minor-mode-overriding-map-alist))))
+    backup-walker-minor-mode))
 
 (add-minor-mode 'backup-walker-minor-mode " walker" nil nil nil)
 
 (defvar backup-walker-data-alist nil
-  "")
+  "internal data")
 (make-variable-buffer-local 'backup-walker-data-alist)
 (put 'backup-walker-data-alist 'permanent-local t)
 
@@ -238,7 +240,7 @@
             left-version (format "%i" (backup-walker-get-version left-file))))
     (setq diff-buf (diff-no-select left-file right-file nil 'noasync))
     (setq buffer-read-only nil)
-    (delete-region (point-min) (point-max))
+    (erase-buffer)
     (insert-buffer-substring diff-buf)
     (set-buffer-modified-p nil)
     (setq buffer-read-only t)
