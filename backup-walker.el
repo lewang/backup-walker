@@ -11,9 +11,9 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Mon Sep 19 12:22:10 2011 (+0800)
+;; Last-Updated: Tue Sep 20 03:31:26 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 116
+;;     Update #: 127
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
@@ -59,8 +59,6 @@
 ;;
 
 ;;
-;; TODO: when moving between backups, if we parse the diff output, then we can
-;; locate the point to be more consistent.  It's not hard.
 ;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -97,14 +95,18 @@
       (get-buffer-create "*Diff*")))
 
 
-(defvar backup-walker-ro-map (let ((map (make-sparse-keymap)))
-                               (suppress-keymap map)
-                               map))
+(easy-mmode-defmap backup-walker-ro-map
+                   '(("n" . backup-walker-next)
+                     ("p" . backup-walker-previous)
+                     ("q" . backup-walker-quit)
+                     ("b" . backup-walker-blame))
+                   ""
+                   :suppress t)
 
-(define-key backup-walker-ro-map [(n)] 'backup-walker-next)
-(define-key backup-walker-ro-map [(p)] 'backup-walker-previous)
-(define-key backup-walker-ro-map [(q)] 'backup-walker-quit)
-(define-key backup-walker-ro-map [(return)] 'backup-walker-show-file-in-other-window)
+(easy-mmode-defmap backup-walker-mode-map
+                   '(([(return)] . backup-walker-show-file-in-other-window))
+                   ""
+                  :inherit backup-walker-ro-map)
 
 (defvar backup-walker-minor-mode nil "non-nil if backup walker minor mode is enabled")
 (make-variable-buffer-local 'backup-walker-minor-mode)
@@ -135,11 +137,10 @@
                            'face 'font-lock-keyword-face)
                "~ ")
      "")
+   (propertize "<b>" 'face 'italic)
+   " blame "
    (propertize "<q>" 'face 'italic)
    " quit "))
-
-;; TODO: We can actually compute the correct new point by diffing and
-;;       interpreting results.  So far, it seems overkill.
 
 (defsubst backup-walker-move (index-cons index suffixes new-index)
   "internal function used by backup-walker-{next,previous}"
@@ -149,27 +150,33 @@
     (backup-walker-refresh))
    (backup-walker-minor-mode
     (let* ((prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
-           (file-name (concat prefix (nth new-index suffixes)))
+           (new-file-name (concat prefix (nth new-index suffixes)))
+           (old-file-name (concat prefix (nth index suffixes)))
            (alist (copy-alist backup-walker-data-alist))
            (saved-column (current-column))
            (saved-line (count-lines (point-min) (point)))
-           (buf (find-file-noselect file-name)))
+           (buf (find-file-noselect new-file-name)))
       (setcdr (assq :index alist) new-index)
+      (set-window-buffer nil buf)
       (with-current-buffer buf
         (setq backup-walker-data-alist alist)
         (backup-walker-minor-mode 1)
-        (goto-char (point-at-bol saved-line))
-        (move-to-column saved-column))
-      (set-window-buffer nil buf)))))
+        (goto-char (point-min))
+        (goto-char (point-at-bol (+ saved-line
+                                    (backup-walker-get-offset
+                                     saved-line
+                                     old-file-name
+                                     new-file-name))))
+        (move-to-column saved-column))))))
+
+(define-derived-mode backup-walker-mode diff-mode "{Diff backup walker}"
+  "major mode for traversing versioned backups.  Use
+  `backup-walker-start' as entry point."
+  (run-hooks 'view-mode-hook)         ; diff-mode sets up this hook to
+                                      ; remove its read-only overrides.
+  (add-to-list 'minor-mode-overriding-map-alist (cons 'buffer-read-only backup-walker-mode-map)))
 
 (lexical-let ((overriding-element (cons 'buffer-read-only backup-walker-ro-map)))
-  (define-derived-mode backup-walker-mode diff-mode "{Diff backup walker}"
-    "major mode for traversing versioned backups.  Use
-  `backup-walker-start' as entry point."
-    (run-hooks 'view-mode-hook)           ; diff-mode sets up this hook to
-                                        ; remove its read-only overrides.
-    (add-to-list 'minor-mode-overriding-map-alist overriding-element))
-
   (defun backup-walker-minor-mode (&optional arg)
     "purposefully made non-interactive, because this mode should only be used by code"
     (setq arg (cond  ((or (null arg)
@@ -240,6 +247,7 @@
     (setq buffer-read-only nil)
     (erase-buffer)
     (insert-buffer-substring diff-buf)
+    (goto-char (point-min))
     (set-buffer-modified-p nil)
     (setq buffer-read-only t)
     (force-mode-line-update)
@@ -272,6 +280,12 @@ with universal arg, ask for a file-name."
   (unless (and version-control
                (not (eq version-control 'never)))
     (error "version-control must be enabled for backup-walker to function."))
+  (unless (not (backup-file-name-p original-file))
+    (error "`backup-start' must be run in a non-backup buffer."))
+  (unless (not (buffer-modified-p))
+    (if (y-or-n-p "Save buffer (force backup) and continue?")
+        (save-buffer 16)
+      (error "buffer has to be unmodified to enter `backup-walker'.")))
   (let ((backups (backup-walker-get-sorted-backups original-file))
         alist
         buf)
@@ -327,7 +341,7 @@ with ARG move ARG times"
 Only call this function interactively."
   (interactive)
   (unless (eq major-mode 'backup-walker-mode)
-    (error "this is not a backup walker buffer."))
+    (error "this is not a backup walker control buffer."))
   (let* ((index (cdr (assq :index backup-walker-data-alist)))
          (suffixes (cdr (assq :backup-suffix-list backup-walker-data-alist)))
          (prefix (cdr (assq :backup-prefix backup-walker-data-alist)))
@@ -344,9 +358,16 @@ Only call this function interactively."
 (defun backup-walker-blame (line)
   "find out where a certain line came into existance
 
-show the backup *JUST BEFORE* this line was born, since that is
-usually more interesting."
-  (interactive (list (read-string "line: " nil 'backup-walker-blame)))
+show the backup *JUST BEFORE* this line was born."
+  (interactive (progn
+                 (unless (or (eq major-mode 'backup-walker-mode)
+                             backup-walker-minor-mode)
+                   (error "not in backup walker buffer"))
+                 (list (read-string "line: "
+                                    (when backup-walker-minor-mode
+                                      (buffer-substring-no-properties (point-at-bol) (point-at-eol)))
+                                    nil
+                                    'backup-walker-blame))))
   (cond
    (backup-walker-minor-mode
     (let* ((my-index (cdr (assq :index backup-walker-data-alist)))
@@ -414,6 +435,81 @@ with ARG, also kill the walking buffer"
              (kill-buffer walking-buf))))
         (t
          (error "I don't know how to quit you."))))
+
+
+
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+   ;;; NOTES for parsing diff outputs:                                  ;;;
+   ;;;                                                                  ;;;
+   ;;; diff range example:                                              ;;;
+   ;;;                                                                  ;;;
+   ;;;   @@ -l,r +l,r @@                                                ;;;
+   ;;;                                                                  ;;;
+   ;;;   ** l is line number                                            ;;;
+   ;;;                                                                  ;;;
+   ;;;   ** r is range                                                  ;;;
+   ;;;                                                                  ;;;
+   ;;;   ** When the range is 1, the range, including coma is not       ;;;
+   ;;;      printed                                                     ;;;
+   ;;;                                                                  ;;;
+   ;;;   ** When range is 0, the line number is one less than it should ;;;
+   ;;;      be.                                                         ;;;
+   ;;;                                                                  ;;;
+   ;;;  An alternative to doing this is to just count the `+' and `-'   ;;;
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun backup-walker-get-offset (orig-linenum orig-file new-file)
+  "ORIG-LINENUM is line position in ORIG-FILE
+
+return an offset to adjust orig-linenum"
+  (with-temp-buffer
+    (call-process "diff" nil t nil "-u0" (expand-file-name orig-file) (expand-file-name new-file))
+    (goto-char (point-min))
+    (let (curr-line
+          last-match-data)
+      (loop while (re-search-forward "^@@ -\\([0-9]+\\),?\\([0-9]*\\) \\+\\([0-9]+\\),?\\([0-9]*\\) @@$"
+                                     nil
+                                     t)
+            do (destructuring-bind (l r)
+                   (backup-walker-tupple-from-hunk-header nil t)
+                 (setq curr-line (+ l r))
+                 (unless (> curr-line orig-linenum)
+                   (setq last-match-data (match-data))))
+            until (> curr-line orig-linenum))
+      (if (not last-match-data)
+          0
+        (destructuring-bind (orig-l orig-r new-l new-r)
+            (backup-walker-tupple-from-hunk-header last-match-data)
+          (- (+ new-l new-r) (+ orig-l orig-r)))))))
+
+(defun backup-walker-tupple-from-hunk-header (match-data &optional source-only)
+  "LINE and SECTION are strings parsed from input
+
+return (orig-l orig-r new-l new-r)"
+
+  (when match-data
+    (set-match-data match-data))
+  (nconc
+   (list
+    (+ (string-to-number (match-string-no-properties 1))
+       (if (equal "0" (match-string-no-properties 2))
+           1
+         0))
+    (if (equal "" (match-string-no-properties 2))
+        1
+      (string-to-number (match-string-no-properties 2))))
+   (when (not source-only)
+     (list
+      (+ (string-to-number (match-string-no-properties 3))
+         (if (equal "0" (match-string-no-properties 4))
+             1
+           0))
+      (if (equal "" (match-string-no-properties 4))
+          1
+        (string-to-number (match-string-no-properties 4)))))))
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
