@@ -29,7 +29,7 @@ while traversing)
   much as possible by parsing diff output on the fly.
 ** blame
 - [X] find the version of backup where a line disappeared.
-- Of course this works best if you have comprehensive backup history.
+  + Of course this works best if you have comprehensive backup history.
 ** cleanup
 - [X] optionally kill all open backups when quiting
 * Requires
