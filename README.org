@@ -9,9 +9,9 @@ files are tiny.
 I do.  And you should.  Whenever possible.
 
 But not all your edits and saves will be ready to be checked into VCS, but it
-can be inconvenient if you lose them.  That's where backups come up.
+can be inconvenient if you lose them.  That's where version-ed backups come in.
 
-If I only worked on one machine, the my backups are a crude super-set of the
+If I only worked on one machine, then my backups are a crude super-set of the
 VCS content.
 * The problem with version-ed backups
 ** File-names are long
