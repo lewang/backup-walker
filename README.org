@@ -22,6 +22,8 @@ This is what "backup-walker" does.
 I didn't find Chad Braun-Duin's backups-mode until after I made backup-walker.
 Although they seem to serve different purposes.
 
+-lw- FIXME
+
 "backup-walker" does not modify the Emacs backup system.  It's just a way to
 quickly traverse the backups you already have.  And the emphasis is on
 traversing backups.  There is never a listing of all the backups. (although if

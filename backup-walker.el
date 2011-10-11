@@ -11,12 +11,43 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Tue Sep 20 03:31:26 2011 (+0800)
+;; Last-Updated: Mon Oct 10 22:22:37 2011 (+0800)
 ;;           By: Le Wang
-;;     Update #: 127
+;;     Update #: 133
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
+
+
+
+;;;{FIXME};;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                          ;;
+;; 1. add find-file hoook to shorten backup buffer names with               ;;
+;;    `rename-buffer'                                                       ;;
+;; 2. instead of having a buffer-local state, just have a central hash      ;;
+;;    keying on the unversioned backup file-name.                           ;;
+;; 3. elevate minor-mode to fist class citizen that can be entered anywhere ;;
+;; 4. add minor-mode to find-file hook                                      ;;
+;; 5. make switch between diff and minor-mode view of backup bi-directional ;;
+;; 6. don't use index, just use the suffix.  Instead update central list of ;;
+;;    backups every time a new backup is opened.                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;;; Installation:
 
@@ -142,8 +173,13 @@
    (propertize "<q>" 'face 'italic)
    " quit "))
 
+(defvar backup-walker-visit-hook nil
+  "hook to be run wwhen visiting backup files")
+
 (defsubst backup-walker-move (index-cons index suffixes new-index)
-  "internal function used by backup-walker-{next,previous}"
+  "internal function used by backup-walker-{next,previous}
+
+run `backup-walker-visit-hook' after loading new buffer."
   (cond
    ((eq major-mode 'backup-walker-mode)
     (setcdr index-cons new-index)
@@ -167,7 +203,9 @@
                                      saved-line
                                      old-file-name
                                      new-file-name))))
-        (move-to-column saved-column))))))
+        (recenter)
+        (move-to-column saved-column)
+        (run-hooks 'backup-walker-visit-hook))))))
 
 (define-derived-mode backup-walker-mode diff-mode "{Diff backup walker}"
   "major mode for traversing versioned backups.  Use
@@ -438,32 +476,30 @@ with ARG, also kill the walking buffer"
 
 
 
-   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-   ;;; NOTES for parsing diff outputs:                                  ;;;
-   ;;;                                                                  ;;;
-   ;;; diff range example:                                              ;;;
-   ;;;                                                                  ;;;
-   ;;;   @@ -l,r +l,r @@                                                ;;;
-   ;;;                                                                  ;;;
-   ;;;   ** l is line number                                            ;;;
-   ;;;                                                                  ;;;
-   ;;;   ** r is range                                                  ;;;
-   ;;;                                                                  ;;;
-   ;;;   ** When the range is 1, the range, including coma is not       ;;;
-   ;;;      printed                                                     ;;;
-   ;;;                                                                  ;;;
-   ;;;   ** When range is 0, the line number is one less than it should ;;;
-   ;;;      be.                                                         ;;;
-   ;;;                                                                  ;;;
-   ;;;  An alternative to doing this is to just count the `+' and `-'   ;;;
-   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+   ;;;;{NOTES for parsing diff outputs};;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+   ;;;                                                                    ;;;
+   ;;; diff range example:                                                ;;;
+   ;;;                                                                    ;;;
+   ;;;   @@ -l,r +l,r @@                                                  ;;;
+   ;;;                                                                    ;;;
+   ;;;   ** l is line number                                              ;;;
+   ;;;                                                                    ;;;
+   ;;;   ** r is range                                                    ;;;
+   ;;;                                                                    ;;;
+   ;;;   ** When the range is 1, the range, including coma is not printed ;;;
+   ;;;                                                                    ;;;
+   ;;;   ** When range is 0, the line number is one less than it should   ;;;
+   ;;;      be.                                                           ;;;
+   ;;;                                                                    ;;;
+   ;;;  An alternative to doing this is to just count the `+' and `-'     ;;;
+   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun backup-walker-get-offset (orig-linenum orig-file new-file)
   "ORIG-LINENUM is line position in ORIG-FILE
 
 return an offset to adjust orig-linenum"
   (with-temp-buffer
-    (call-process "diff" nil t nil "-u0" (expand-file-name orig-file) (expand-file-name new-file))
+    (call-process diff-command nil t nil "-u0" (expand-file-name orig-file) (expand-file-name new-file))
     (goto-char (point-min))
     (let (curr-line
           last-match-data)
