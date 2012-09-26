@@ -6,8 +6,6 @@
 ;; Author: Le Wang
 ;; Maintainer: Le Wang
 ;; Description: quickly traverse all backups of a file
-;; Author: Le Wang
-;; Maintainer: Le Wang
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
@@ -56,9 +54,6 @@
 ;;
 ;; Additionally, note that all the diff-mode facilities are available in the
 ;; `backup-walker' buffer.
-;;
-
-;;
 ;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -508,9 +503,5 @@ return (orig-l orig-r new-l new-r)"
           1
         (string-to-number (match-string-no-properties 4)))))))
 
-
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; backup-walker.el ends here
+;;; backup-walker.el ends here
