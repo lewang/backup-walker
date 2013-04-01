@@ -9,12 +9,43 @@
 
 ;; Created: Wed Sep  7 19:38:05 2011 (+0800)
 ;; Version: 0.1
-;; Last-Updated: Tue Sep 20 03:31:26 2011 (+0800)
+;; Last-Updated: Mon Apr  1 16:59:52 2013 (+0800)
 ;;           By: Le Wang
-;;     Update #: 127
+;;     Update #: 135
 ;; URL: https://github.com/lewang/backup-walker
 ;; Keywords: backup
 ;; Compatibility: Emacs 23+
+
+
+
+;;;{FIXME};;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                                                                          ;;
+;; 1. add find-file hoook to shorten backup buffer names with               ;;
+;;    `rename-buffer'                                                       ;;
+;; 2. instead of having a buffer-local state, just have a central hash      ;;
+;;    keying on the unversioned backup file-name.                           ;;
+;; 3. elevate minor-mode to fist class citizen that can be entered anywhere ;;
+;; 4. add minor-mode to find-file hook                                      ;;
+;; 5. make switch between diff and minor-mode view of backup bi-directional ;;
+;; 6. don't use index, just use the suffix.  Instead update central list of ;;
+;;    backups every time a new backup is opened.                            ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;;; Installation:
 
@@ -82,7 +113,9 @@
 
 (provide 'backup-walker)
 
-(eval-and-compile (require 'diff))
+(eval-and-compile
+  (require 'diff)
+  (require 'view))
 
 (or (fboundp 'diff-no-select)
     (defun diff-no-select (old new &optional switches no-async)
