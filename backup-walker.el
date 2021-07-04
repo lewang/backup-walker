@@ -271,7 +271,7 @@
               left-version "orig")
       (setq left-file (concat prefix (nth (1- index) suffixes))
             left-version (format "%i" (backup-walker-get-version left-file))))
-    (setq diff-buf (diff-no-select left-file right-file nil 'noasync))
+    (setq diff-buf (diff-no-select right-file left-file nil 'noasync))
     (setq buffer-read-only nil)
     (erase-buffer)
     (insert-buffer-substring diff-buf)
